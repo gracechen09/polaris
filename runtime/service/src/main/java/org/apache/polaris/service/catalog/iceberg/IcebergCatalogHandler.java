@@ -427,21 +427,6 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
         namespace, request, EnumSet.noneOf(AccessDelegationMode.class), Optional.empty());
   }
 
-  /**
-   * Create a table.
-   *
-   * @param namespace the namespace to create the table in
-   * @param request the table creation request
-   * @return ETagged {@link LoadTableResponse} to uniquely identify the table metadata
-   */
-  public LoadTableResponse createTableDirectWithWriteDelegation(
-      Namespace namespace,
-      CreateTableRequest request,
-      Optional<String> refreshCredentialsEndpoint) {
-    return createTableDirect(
-        namespace, request, EnumSet.of(VENDED_CREDENTIALS), refreshCredentialsEndpoint);
-  }
-
   public void authorizeCreateTableDirect(
       Namespace namespace, CreateTableRequest request, boolean delegationRequested) {
     if (delegationRequested) {
@@ -1021,10 +1006,10 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
 
       Set<String> tableLocations = StorageUtil.getLocationsUsedByTable(tableMetadata);
 
-      // For federated catalogs, validate that table locations are within allowed locations
-      if (isFederated) {
-        validateRemoteTableLocations(tableIdentifier, tableLocations, resolvedStoragePath);
-      }
+      // Validate that the table's locations are still within the catalog's current
+      // allowedLocations before vending credentials. This protects against cases where
+      // allowedLocations were tightened after the table was created.
+      validateTableLocations(tableIdentifier, tableLocations, resolvedStoragePath);
 
       StorageAccessConfig storageAccessConfig =
           storageAccessConfigProvider()
@@ -1058,13 +1043,15 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     return responseBuilder;
   }
 
-  private void validateRemoteTableLocations(
+  private void validateTableLocations(
       TableIdentifier tableIdentifier,
       Set<String> tableLocations,
       PolarisResolvedPathWrapper resolvedStoragePath) {
 
     try {
-      // Delegate to common validation logic
+      // Delegate to common validation logic. This is called for both native and federated
+      // catalogs before vending credentials to ensure locations are still within the
+      // current catalog's allowedLocations (defense against policy changes after table creation).
       CatalogUtils.validateLocationsForTableLike(
           realmConfig(), tableIdentifier, tableLocations, resolvedStoragePath);
 
@@ -1072,15 +1059,15 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
           .atInfo()
           .addKeyValue("tableIdentifier", tableIdentifier)
           .addKeyValue("tableLocations", tableLocations)
-          .log("Validated federated table locations");
+          .log("Validated table locations for credential vending");
     } catch (ForbiddenException e) {
       LOGGER
           .atError()
           .addKeyValue("tableIdentifier", tableIdentifier)
           .addKeyValue("tableLocations", tableLocations)
-          .log("Federated table locations validation failed");
+          .log("Table locations validation failed for credential vending");
       throw new ForbiddenException(
-          "Table '%s' in remote catalog has locations outside catalog's allowed locations: %s",
+          "Table '%s' has locations outside the catalog's current allowed locations: %s",
           tableIdentifier, e.getMessage());
     }
   }
@@ -1550,6 +1537,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
                 .addAll(VIEW_ENDPOINTS)
                 .addAll(PolarisEndpoints.getSupportedGenericTableEndpoints(realmConfig()))
                 .addAll(PolarisEndpoints.getSupportedPolicyEndpoints(realmConfig()))
+                .addAll(PolarisEndpoints.getSupportedSemanticModelEndpoints(realmConfig()))
                 .build())
         .build();
   }
@@ -1566,6 +1554,10 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
           "Unable to find storage configuration information for table {}", tableIdentifier);
       return null;
     }
+
+    // Re-validate before vending in case this is called from other paths in the future.
+    // Primary validation for loadCredentials and delegation happens at call sites.
+    validateTableLocations(tableIdentifier, tableLocations, resolvedStoragePath);
 
     return storageAccessConfigProvider()
         .getStorageAccessConfig(
