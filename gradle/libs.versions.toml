@@ -41,7 +41,7 @@ swagger = "1.6.16"
 # If a dependency is removed, check whether the LICENSE and/or NOTICE files need to be adopted
 # (aka mention of the dependency removed).
 #
-agrona = { module = "org.agrona:agrona", version = "2.4.1" }
+agrona = { module = "org.agrona:agrona", version = "2.5.0" }
 antlr4-runtime-spark35 = { module = "org.antlr:antlr4-runtime", version.strictly = "4.9.3" } # spark 3.5 integration tests
 antlr4-runtime-spark40 = { module = "org.antlr:antlr4-runtime", version.strictly = "4.13.1" } # spark 4.0 integration tests
 apache-httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5", version = "5.6.2" }
@@ -98,7 +98,7 @@ mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version = "5
 opentelemetry-instrumentation-bom-alpha = { module = "io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha", version= "2.20.1-alpha" }
 picocli = { module = "info.picocli:picocli-codegen", version.ref = "picocli" }
 picocli-codegen = { module = "info.picocli:picocli-codegen", version.ref = "picocli" }
-postgresql = { module = "org.postgresql:postgresql", version = "42.7.12" }
+postgresql = { module = "org.postgresql:postgresql", version = "42.7.13" }
 quarkus-amazon-services-bom = { module = "io.quarkus.platform:quarkus-amazon-services-bom", version.ref="quarkus" }
 quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", version.ref = "quarkus" }
 ranger-audit-core = { module = "org.apache.ranger:ranger-audit-core", version.ref = "ranger" }
@@ -111,7 +111,7 @@ scala212-lang-library = { module = "org.scala-lang:scala-library", version.ref =
 scala212-lang-reflect = { module = "org.scala-lang:scala-reflect", version.ref = "scala212" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version = "2.0.18" }
 smallrye-common-annotation = { module = "io.smallrye.common:smallrye-common-annotation", version = "2.19.0" }
-smallrye-config-core = { module = "io.smallrye.config:smallrye-config-core", version = "3.17.2" }
+smallrye-config-core = { module = "io.smallrye.config:smallrye-config-core", version = "3.18.0" }
 smallrye-jandex = { module = "io.smallrye:jandex", version = "3.6.0" }
 swagger-annotations = { module = "io.swagger:swagger-annotations", version.ref = "swagger" }
 swagger-jaxrs = { module = "io.swagger:swagger-jaxrs", version.ref = "swagger" }
