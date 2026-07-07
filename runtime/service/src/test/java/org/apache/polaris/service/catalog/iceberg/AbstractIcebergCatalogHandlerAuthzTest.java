@@ -22,6 +22,7 @@ import static org.apache.polaris.service.catalog.AccessDelegationMode.VENDED_CRE
 
 import com.google.common.collect.ImmutableMap;
 import jakarta.inject.Inject;
+import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -43,6 +44,7 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.expressions.Expressions;
+import org.apache.iceberg.inmemory.InMemoryCatalog;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.metrics.CommitMetrics;
 import org.apache.iceberg.metrics.CommitMetricsResult;
@@ -2193,7 +2195,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
    * CallContext} at bean-creation time and do not see the mock.
    */
   private void enableEntityLevelListFiltering() {
-    CatalogEntity current = adminService.getCatalog(CATALOG_NAME);
+    enableEntityLevelListFiltering(CATALOG_NAME);
+  }
+
+  private void enableEntityLevelListFiltering(String catalogName) {
+    CatalogEntity current = adminService.getCatalog(catalogName);
     CatalogEntity updated =
         new CatalogEntity.Builder(current)
             .addProperty("polaris.config.entity-level-list-filtering", "true")
@@ -2239,6 +2245,90 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         .build();
   }
 
+  /**
+   * Returns a handler for {@code FEDERATED_CATALOG_NAME} with the same filtering authorizer as
+   * {@link #newHandlerWithEntityLevelFiltering}, but backed by a pre-populated {@link
+   * InMemoryCatalog} with {@code isFederated=true}, so the {@code if (isFederated)} branches of
+   * the paginated list methods are exercised. The fields are injected via reflection because
+   * {@code initializeCatalog()} runs lazily inside the first authorization call rather than at
+   * handler-construction time.
+   */
+  private IcebergCatalogHandler newFederatedHandlerWithEntityLevelFiltering(
+      Predicate<String> denyIfLeafName) throws Exception {
+    PolarisPrincipal authenticatedPrincipal =
+        PolarisPrincipal.of(principalEntity, Set.of(PRINCIPAL_ROLE1));
+
+    PolarisAuthorizer filteringAuthorizer =
+        new PolarisAuthorizerImpl(realmConfig) {
+          @Override
+          public List<AuthorizationDecision> authorize(
+              AuthorizationState authzState, List<AuthorizationRequest> requests) {
+            return requests.stream()
+                .map(
+                    req -> {
+                      SingleTargetAuthorizationIntent intent =
+                          (SingleTargetAuthorizationIntent) req.intents().get(0);
+                      return denyIfLeafName.test(intent.target().getLeaf().name())
+                          ? AuthorizationDecision.deny("filtered in test")
+                          : AuthorizationDecision.allow();
+                    })
+                .toList();
+          }
+        };
+
+    // Build test data in an InMemoryCatalog (mirrors PolarisAuthzTestBase.setUp data)
+    InMemoryCatalog inMemoryCatalog = new InMemoryCatalog();
+    inMemoryCatalog.initialize("federated-test", Map.of());
+    inMemoryCatalog.createNamespace(NS1);
+    inMemoryCatalog.createNamespace(NS2);
+    inMemoryCatalog.createNamespace(NS1A);
+    inMemoryCatalog.buildTable(TABLE_NS1A_1, SCHEMA).create();
+    inMemoryCatalog.buildTable(TABLE_NS1A_2, SCHEMA).create();
+    inMemoryCatalog
+        .buildView(VIEW_NS1A_1)
+        .withSchema(SCHEMA)
+        .withDefaultNamespace(NS1A)
+        .withQuery("q", "select 1")
+        .create();
+    inMemoryCatalog
+        .buildView(VIEW_NS1A_2)
+        .withSchema(SCHEMA)
+        .withDefaultNamespace(NS1A)
+        .withQuery("q", "select 1")
+        .create();
+
+    // Create handler for the federated catalog (initializeCatalog() not yet called)
+    IcebergCatalogHandler base =
+        icebergCatalogHandlerFactory.createHandler(FEDERATED_CATALOG_NAME, authenticatedPrincipal);
+
+    // Swap in the custom authorizer via Immutables builder
+    IcebergCatalogHandler withAuthorizer =
+        ImmutableIcebergCatalogHandler.builder()
+            .from(base)
+            .authorizer(filteringAuthorizer)
+            .build();
+
+    // Spy so we can intercept initializeCatalog() before it is called
+    IcebergCatalogHandler spied = Mockito.spy(withAuthorizer);
+
+    Mockito.doAnswer(
+            inv -> {
+              for (String fieldName : List.of("baseCatalog", "namespaceCatalog", "viewCatalog")) {
+                Field f = IcebergCatalogHandler.class.getDeclaredField(fieldName);
+                f.setAccessible(true);
+                f.set(spied, inMemoryCatalog);
+              }
+              Field fedField = IcebergCatalogHandler.class.getDeclaredField("isFederated");
+              fedField.setAccessible(true);
+              fedField.set(spied, true);
+              return null;
+            })
+        .when(spied)
+        .initializeCatalog();
+
+    return spied;
+  }
+
   protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
     enableEntityLevelListFiltering();
     // Parent-level check passes: NAMESPACE_LIST granted at catalog level.
@@ -2278,5 +2368,106 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             newHandlerWithEntityLevelFiltering("view2"::equals).listViews(NS1A).identifiers())
         .contains(VIEW_NS1A_1)
         .doesNotContain(VIEW_NS1A_2);
+  }
+
+  protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces_paginated() {
+    enableEntityLevelListFiltering();
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.NAMESPACE_LIST));
+
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("ns2"::equals)
+                .listNamespaces(Namespace.of(), null, 10)
+                .namespaces())
+        .contains(NS1)
+        .doesNotContain(NS2);
+  }
+
+  protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables_paginated() {
+    enableEntityLevelListFiltering();
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.TABLE_LIST));
+
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("table2"::equals)
+                .listTables(NS1A, null, 10)
+                .identifiers())
+        .contains(TABLE_NS1A_1)
+        .doesNotContain(TABLE_NS1A_2);
+  }
+
+  protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews_paginated() {
+    enableEntityLevelListFiltering();
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.VIEW_LIST));
+
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("view2"::equals)
+                .listViews(NS1A, null, 10)
+                .identifiers())
+        .contains(VIEW_NS1A_1)
+        .doesNotContain(VIEW_NS1A_2);
+  }
+
+  protected void verifyEntityLevelListFilteringDisabled_returnsAllEntities() {
+    // Flag NOT enabled (default false)
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.TABLE_LIST));
+
+    // Even though the authorizer denies "table2", flag is off so all entities returned
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("table2"::equals)
+                .listTables(NS1A)
+                .identifiers())
+        .contains(TABLE_NS1A_1, TABLE_NS1A_2);
+  }
+
+  protected void verifyEntityLevelListFilteringEnabled_federatedListTables_filtersUnauthorized()
+      throws Exception {
+    enableEntityLevelListFiltering(FEDERATED_CATALOG_NAME);
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            FEDERATED_CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.TABLE_LIST));
+
+    Assertions.assertThat(
+            newFederatedHandlerWithEntityLevelFiltering("table2"::equals)
+                .listTables(NS1A, null, 10)
+                .identifiers())
+        .contains(TABLE_NS1A_1)
+        .doesNotContain(TABLE_NS1A_2);
+  }
+
+  protected void verifyEntityLevelListFilteringEnabled_federatedListViews_filtersUnauthorized()
+      throws Exception {
+    enableEntityLevelListFiltering(FEDERATED_CATALOG_NAME);
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            FEDERATED_CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.VIEW_LIST));
+
+    Assertions.assertThat(
+            newFederatedHandlerWithEntityLevelFiltering("view2"::equals)
+                .listViews(NS1A, null, 10)
+                .identifiers())
+        .contains(VIEW_NS1A_1)
+        .doesNotContain(VIEW_NS1A_2);
+  }
+
+  protected void verifyEntityLevelListFilteringEnabled_federatedListNamespaces_filtersUnauthorized()
+      throws Exception {
+    enableEntityLevelListFiltering(FEDERATED_CATALOG_NAME);
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            FEDERATED_CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.NAMESPACE_LIST));
+
+    Assertions.assertThat(
+            newFederatedHandlerWithEntityLevelFiltering("ns2"::equals)
+                .listNamespaces(Namespace.of(), null, 10)
+                .namespaces())
+        .contains(NS1)
+        .doesNotContain(NS2);
   }
 }

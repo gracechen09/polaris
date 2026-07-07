@@ -433,7 +433,16 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     boolean filterEnabled = isEntityLevelListFilteringEnabled();
 
     if (isFederated) {
-      return catalogHandlerUtils().listTables(baseCatalog, namespace, pageToken, pageSize);
+      ListTablesResponse response =
+          catalogHandlerUtils().listTables(baseCatalog, namespace, pageToken, pageSize);
+      if (!filterEnabled) {
+        return response;
+      }
+      List<TableIdentifier> visible = filterTableIdentifiers(response.identifiers(), op);
+      return ListTablesResponse.builder()
+          .addAll(visible)
+          .nextPageToken(response.nextPageToken())
+          .build();
     } else {
       PageToken pageRequest = PageToken.build(pageToken, pageSize, this::shouldDecodeToken);
       var results = ((LocalIcebergCatalog) baseCatalog).listTables(namespace, pageRequest);
