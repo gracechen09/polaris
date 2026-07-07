@@ -27,18 +27,18 @@ import org.junit.jupiter.api.Test;
 @TestProfile(Profiles.PolarisAuthzBaseProfile.class)
 public class IcebergCatalogHandlerAuthzTest extends AbstractIcebergCatalogHandlerAuthzTest {
 
-	@Test
-	void testEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
-		verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces();
-	}
+  @Test
+  void testEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
+    verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces();
+  }
 
-	@Test
-	void testEntityLevelListFilteringEnabled_filtersUnauthorizedTables() {
-		verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables();
-	}
+  @Test
+  void testEntityLevelListFilteringEnabled_filtersUnauthorizedTables() {
+    verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables();
+  }
 
-	@Test
-	void testEntityLevelListFilteringEnabled_filtersUnauthorizedViews() {
-		verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews();
-	}
+  @Test
+  void testEntityLevelListFilteringEnabled_filtersUnauthorizedViews() {
+    verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews();
+  }
 }

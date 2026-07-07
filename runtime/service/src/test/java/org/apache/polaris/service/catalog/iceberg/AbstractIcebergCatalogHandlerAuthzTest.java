@@ -2186,11 +2186,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
 
   /**
    * Enables {@code ENTITY_LEVEL_LIST_FILTERING} for the test catalog by writing the catalog config
-   * property directly to the metastore via the root-privileged metaStoreManager, bypassing the
-   * auth layer. This avoids mocking the request-scoped {@link CallContext}, which causes the
-   * second resolution manifest (created inside {@code filterNamespaces}) to hang because the CDI-
-   * produced {@code ResolutionManifestFactory} and {@code ResolverFactory} capture the real CDI
-   * {@code CallContext} at bean-creation time and do not see the mock.
+   * property directly to the metastore via the root-privileged metaStoreManager, bypassing the auth
+   * layer. This avoids mocking the request-scoped {@link CallContext}, which causes the second
+   * resolution manifest (created inside {@code filterNamespaces}) to hang because the CDI- produced
+   * {@code ResolutionManifestFactory} and {@code ResolverFactory} capture the real CDI {@code
+   * CallContext} at bean-creation time and do not see the mock.
    */
   private void enableEntityLevelListFiltering() {
     CatalogEntity current = adminService.getCatalog(CATALOG_NAME);
@@ -2239,7 +2239,7 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         .build();
   }
 
-    protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
+  protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
     enableEntityLevelListFiltering();
     // Parent-level check passes: NAMESPACE_LIST granted at catalog level.
     assertSuccess(
@@ -2254,29 +2254,29 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         .doesNotContain(NS2);
   }
 
-    protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables() {
-        enableEntityLevelListFiltering();
-        // Parent-level check passes: TABLE_LIST granted at catalog level cascades to NS1A.
-        assertSuccess(
-                adminService.grantPrivilegeOnCatalogToRole(
-                        CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.TABLE_LIST));
+  protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables() {
+    enableEntityLevelListFiltering();
+    // Parent-level check passes: TABLE_LIST granted at catalog level cascades to NS1A.
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.TABLE_LIST));
 
-        Assertions.assertThat(
-                        newHandlerWithEntityLevelFiltering("table2"::equals).listTables(NS1A).identifiers())
-                .contains(TABLE_NS1A_1)
-                .doesNotContain(TABLE_NS1A_2);
-    }
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("table2"::equals).listTables(NS1A).identifiers())
+        .contains(TABLE_NS1A_1)
+        .doesNotContain(TABLE_NS1A_2);
+  }
 
-    protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews() {
-        enableEntityLevelListFiltering();
-        // Parent-level check passes: VIEW_LIST granted at catalog level cascades to NS1A.
-        assertSuccess(
-                adminService.grantPrivilegeOnCatalogToRole(
-                        CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.VIEW_LIST));
+  protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews() {
+    enableEntityLevelListFiltering();
+    // Parent-level check passes: VIEW_LIST granted at catalog level cascades to NS1A.
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.VIEW_LIST));
 
-        Assertions.assertThat(
-                        newHandlerWithEntityLevelFiltering("view2"::equals).listViews(NS1A).identifiers())
-                .contains(VIEW_NS1A_1)
-                .doesNotContain(VIEW_NS1A_2);
-    }
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("view2"::equals).listViews(NS1A).identifiers())
+        .contains(VIEW_NS1A_1)
+        .doesNotContain(VIEW_NS1A_2);
+  }
 }

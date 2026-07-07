@@ -45,8 +45,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.apache.iceberg.BaseMetadataTable;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.MetadataUpdate;
@@ -118,8 +120,8 @@ import org.apache.polaris.core.persistence.dao.entity.EntitiesResult;
 import org.apache.polaris.core.persistence.dao.entity.EntityWithPath;
 import org.apache.polaris.core.persistence.pagination.PageToken;
 import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifest;
-import org.apache.polaris.core.persistence.resolver.Resolver;
 import org.apache.polaris.core.persistence.resolver.ResolvedPathKey;
+import org.apache.polaris.core.persistence.resolver.Resolver;
 import org.apache.polaris.core.persistence.resolver.ResolverFactory;
 import org.apache.polaris.core.persistence.resolver.ResolverPath;
 import org.apache.polaris.core.persistence.resolver.ResolverStatus;
@@ -310,7 +312,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
 
     ListNamespacesResponse response =
         catalogHandlerUtils().listNamespaces(namespaceCatalog, parent);
-    if (!realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity())) {
+    if (!isEntityLevelListFilteringEnabled()) {
       return response;
     }
     List<Namespace> visible = filterNamespaces(response.namespaces(), op);
@@ -322,8 +324,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     PolarisAuthorizableOperation op = PolarisAuthorizableOperation.LIST_NAMESPACES;
     authorizeBasicNamespaceOperationOrThrow(op, parent);
 
-    boolean filterEnabled =
-        realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity());
+    boolean filterEnabled = isEntityLevelListFilteringEnabled();
 
     if (isFederated) {
       ListNamespacesResponse response =
@@ -427,8 +428,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     PolarisAuthorizableOperation op = PolarisAuthorizableOperation.LIST_TABLES;
     authorizeBasicNamespaceOperationOrThrow(op, namespace);
 
-    boolean filterEnabled =
-        realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity());
+    boolean filterEnabled = isEntityLevelListFilteringEnabled();
 
     if (isFederated) {
       return catalogHandlerUtils().listTables(baseCatalog, namespace, pageToken, pageSize);
@@ -449,7 +449,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     authorizeBasicNamespaceOperationOrThrow(op, namespace);
 
     ListTablesResponse response = catalogHandlerUtils().listTables(baseCatalog, namespace);
-    if (!realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity())) {
+    if (!isEntityLevelListFilteringEnabled()) {
       return response;
     }
     List<TableIdentifier> visible = filterTableIdentifiers(response.identifiers(), op);
@@ -1338,8 +1338,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     PolarisAuthorizableOperation op = PolarisAuthorizableOperation.LIST_VIEWS;
     authorizeBasicNamespaceOperationOrThrow(op, namespace);
 
-    boolean filterEnabled =
-        realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity());
+    boolean filterEnabled = isEntityLevelListFilteringEnabled();
 
     if (isFederated) {
       if (baseCatalog instanceof ViewCatalog viewCatalog) {
@@ -1374,7 +1373,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     authorizeBasicNamespaceOperationOrThrow(op, namespace);
 
     ListTablesResponse response = catalogHandlerUtils().listViews(viewCatalog, namespace);
-    if (!realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity())) {
+    if (!isEntityLevelListFilteringEnabled()) {
       return response;
     }
     List<TableIdentifier> visible = filterTableIdentifiers(response.identifiers(), op);
@@ -1637,6 +1636,47 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
         .build();
   }
 
+  private boolean isEntityLevelListFilteringEnabled() {
+    return realmConfig().getConfig(ENTITY_LEVEL_LIST_FILTERING, getResolvedCatalogEntity());
+  }
+
+  private <T> List<T> filterEntities(
+      List<T> entities,
+      Function<T, ResolverPath> toResolverPath,
+      Function<T, ResolvedPathKey> toResolvedKey,
+      Function<T, PolarisSecurable> toSecurable,
+      PolarisAuthorizableOperation op) {
+    if (entities.isEmpty()) {
+      return entities;
+    }
+    PolarisResolutionManifest filterManifest = newResolutionManifest();
+    for (T entity : entities) {
+      filterManifest.addPath(toResolverPath.apply(entity));
+    }
+    filterManifest.resolveAll();
+
+    AuthorizationState authzState = new AuthorizationState();
+    authzState.setResolutionManifest(filterManifest);
+
+    List<T> resolvable = new ArrayList<>();
+    List<AuthorizationRequest> requests = new ArrayList<>();
+    for (T entity : entities) {
+      if (filterManifest.getResolvedPath(toResolvedKey.apply(entity), true) != null) {
+        resolvable.add(entity);
+        requests.add(
+            new AuthorizationRequest(
+                polarisPrincipal(),
+                List.of(new SingleTargetAuthorizationIntent(op, toSecurable.apply(entity)))));
+      }
+    }
+
+    List<AuthorizationDecision> decisions = authorizer().authorize(authzState, requests);
+    return IntStream.range(0, resolvable.size())
+        .filter(i -> decisions.get(i).isAllowed())
+        .mapToObj(resolvable::get)
+        .toList();
+  }
+
   /**
    * Returns a namespace as a {@link PolarisSecurable} rooted at {@link #catalogName()}.
    *
@@ -1657,14 +1697,14 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
    * <p>The path is: {@code [CATALOG, NAMESPACE..., TABLE_LIKE]}.
    */
   private PolarisSecurable tableLikePolarisSecurable(TableIdentifier id) {
-    List<PathSegment> segments = new ArrayList<>();
-    segments.add(new PathSegment(PolarisEntityType.CATALOG, catalogName()));
-    for (String level : id.namespace().levels()) {
-      segments.add(new PathSegment(PolarisEntityType.NAMESPACE, level));
-    }
-    segments.add(new PathSegment(PolarisEntityType.TABLE_LIKE, id.name()));
-    return PolarisSecurable.of(
-        segments.get(0), segments.subList(1, segments.size()).toArray(new PathSegment[0]));
+    PathSegment catalogSegment = new PathSegment(PolarisEntityType.CATALOG, catalogName());
+    PathSegment[] rest =
+        Stream.concat(
+                Arrays.stream(id.namespace().levels())
+                    .map(level -> new PathSegment(PolarisEntityType.NAMESPACE, level)),
+                Stream.of(new PathSegment(PolarisEntityType.TABLE_LIKE, id.name())))
+            .toArray(PathSegment[]::new);
+    return PolarisSecurable.of(catalogSegment, rest);
   }
 
   /**
@@ -1676,79 +1716,25 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
    */
   private List<Namespace> filterNamespaces(
       List<Namespace> namespaces, PolarisAuthorizableOperation op) {
-    if (namespaces.isEmpty()) {
-      return namespaces;
-    }
-    PolarisResolutionManifest filterManifest = newResolutionManifest();
-    for (Namespace ns : namespaces) {
-      filterManifest.addPath(
-          new ResolverPath(Arrays.asList(ns.levels()), PolarisEntityType.NAMESPACE, true));
-    }
-    filterManifest.resolveAll();
-
-    AuthorizationState authzState = new AuthorizationState();
-    authzState.setResolutionManifest(filterManifest);
-
-    List<Namespace> resolvable = new ArrayList<>();
-    List<AuthorizationRequest> requests = new ArrayList<>();
-    for (Namespace ns : namespaces) {
-      if (filterManifest.getResolvedPath(ResolvedPathKey.ofNamespace(ns), true) != null) {
-        resolvable.add(ns);
-        requests.add(
-            new AuthorizationRequest(
-                polarisPrincipal(),
-                List.of(
-                    new SingleTargetAuthorizationIntent(op, namespacePolarisSecurable(ns)))));
-      }
-    }
-
-    List<AuthorizationDecision> decisions = authorizer().authorize(authzState, requests);
-    return IntStream.range(0, resolvable.size())
-        .filter(i -> decisions.get(i).isAllowed())
-        .mapToObj(resolvable::get)
-        .toList();
+    return filterEntities(
+        namespaces,
+        ns -> new ResolverPath(Arrays.asList(ns.levels()), PolarisEntityType.NAMESPACE, true),
+        ResolvedPathKey::ofNamespace,
+        this::namespacePolarisSecurable,
+        op);
   }
 
-  /**
-   * Filters {@code identifiers} to those the caller is authorized to see under {@code op}.
-   *
-   * <p>Same batching strategy as {@link #filterNamespaces}: one manifest, resolved once.
-   */
   private List<TableIdentifier> filterTableIdentifiers(
       List<TableIdentifier> identifiers, PolarisAuthorizableOperation op) {
-    if (identifiers.isEmpty()) {
-      return identifiers;
-    }
-    PolarisResolutionManifest filterManifest = newResolutionManifest();
-    for (TableIdentifier id : identifiers) {
-      filterManifest.addPath(
-          new ResolverPath(
-              PolarisCatalogHelpers.tableIdentifierToList(id),
-              PolarisEntityType.TABLE_LIKE,
-              true));
-    }
-    filterManifest.resolveAll();
-
-    AuthorizationState authzState = new AuthorizationState();
-    authzState.setResolutionManifest(filterManifest);
-
-    List<TableIdentifier> resolvable = new ArrayList<>();
-    List<AuthorizationRequest> requests = new ArrayList<>();
-    for (TableIdentifier id : identifiers) {
-      if (filterManifest.getResolvedPath(ResolvedPathKey.ofTableLike(id), true) != null) {
-        resolvable.add(id);
-        requests.add(
-            new AuthorizationRequest(
-                polarisPrincipal(),
-                List.of(
-                    new SingleTargetAuthorizationIntent(op, tableLikePolarisSecurable(id)))));
-      }
-    }
-
-    List<AuthorizationDecision> decisions = authorizer().authorize(authzState, requests);
-    return IntStream.range(0, resolvable.size())
-        .filter(i -> decisions.get(i).isAllowed())
-        .mapToObj(resolvable::get)
-        .toList();
+    return filterEntities(
+        identifiers,
+        id ->
+            new ResolverPath(
+                PolarisCatalogHelpers.tableIdentifierToList(id),
+                PolarisEntityType.TABLE_LIKE,
+                true),
+        ResolvedPathKey::ofTableLike,
+        this::tableLikePolarisSecurable,
+        op);
   }
 }
