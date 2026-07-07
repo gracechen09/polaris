@@ -2248,9 +2248,9 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
   /**
    * Returns a handler for {@code FEDERATED_CATALOG_NAME} with the same filtering authorizer as
    * {@link #newHandlerWithEntityLevelFiltering}, but backed by a pre-populated {@link
-   * InMemoryCatalog} with {@code isFederated=true}, so the {@code if (isFederated)} branches of
-   * the paginated list methods are exercised. The fields are injected via reflection because
-   * {@code initializeCatalog()} runs lazily inside the first authorization call rather than at
+   * InMemoryCatalog} with {@code isFederated=true}, so the {@code if (isFederated)} branches of the
+   * paginated list methods are exercised. The fields are injected via reflection because {@code
+   * initializeCatalog()} runs lazily inside the first authorization call rather than at
    * handler-construction time.
    */
   private IcebergCatalogHandler newFederatedHandlerWithEntityLevelFiltering(
@@ -2303,10 +2303,7 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
 
     // Swap in the custom authorizer via Immutables builder
     IcebergCatalogHandler withAuthorizer =
-        ImmutableIcebergCatalogHandler.builder()
-            .from(base)
-            .authorizer(filteringAuthorizer)
-            .build();
+        ImmutableIcebergCatalogHandler.builder().from(base).authorizer(filteringAuthorizer).build();
 
     // Spy so we can intercept initializeCatalog() before it is called
     IcebergCatalogHandler spied = Mockito.spy(withAuthorizer);
@@ -2420,9 +2417,7 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
 
     // Even though the authorizer denies "table2", flag is off so all entities returned
     Assertions.assertThat(
-            newHandlerWithEntityLevelFiltering("table2"::equals)
-                .listTables(NS1A)
-                .identifiers())
+            newHandlerWithEntityLevelFiltering("table2"::equals).listTables(NS1A).identifiers())
         .contains(TABLE_NS1A_1, TABLE_NS1A_2);
   }
 
