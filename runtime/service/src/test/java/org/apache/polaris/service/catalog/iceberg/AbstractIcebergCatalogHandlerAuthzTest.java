@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.CatalogUtil;
@@ -67,7 +68,13 @@ import org.apache.polaris.core.admin.model.CreateCatalogRequest;
 import org.apache.polaris.core.admin.model.FileStorageConfigInfo;
 import org.apache.polaris.core.admin.model.PrincipalWithCredentialsCredentials;
 import org.apache.polaris.core.admin.model.StorageConfigInfo;
+import org.apache.polaris.core.auth.AuthorizationDecision;
+import org.apache.polaris.core.auth.AuthorizationRequest;
+import org.apache.polaris.core.auth.AuthorizationState;
+import org.apache.polaris.core.auth.PolarisAuthorizer;
+import org.apache.polaris.core.auth.PolarisAuthorizerImpl;
 import org.apache.polaris.core.auth.PolarisPrincipal;
+import org.apache.polaris.core.auth.SingleTargetAuthorizationIntent;
 import org.apache.polaris.core.catalog.LocalCatalogFactory;
 import org.apache.polaris.core.config.FeatureConfiguration;
 import org.apache.polaris.core.config.PolarisConfiguration;
@@ -2174,4 +2181,102 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
         .createTests();
   }
+
+  // ─── Entity-level list filtering ─────────────────────────────────────────
+
+  /**
+   * Enables {@code ENTITY_LEVEL_LIST_FILTERING} for the test catalog by writing the catalog config
+   * property directly to the metastore via the root-privileged metaStoreManager, bypassing the
+   * auth layer. This avoids mocking the request-scoped {@link CallContext}, which causes the
+   * second resolution manifest (created inside {@code filterNamespaces}) to hang because the CDI-
+   * produced {@code ResolutionManifestFactory} and {@code ResolverFactory} capture the real CDI
+   * {@code CallContext} at bean-creation time and do not see the mock.
+   */
+  private void enableEntityLevelListFiltering() {
+    CatalogEntity current = adminService.getCatalog(CATALOG_NAME);
+    CatalogEntity updated =
+        new CatalogEntity.Builder(current)
+            .addProperty("polaris.config.entity-level-list-filtering", "true")
+            .build();
+    metaStoreManager.updateEntityPropertiesIfNotChanged(
+        callContext.getPolarisCallContext(), null, updated);
+  }
+
+  /**
+   * Returns a handler that uses the real CDI {@code CallContext} but replaces the authorizer with
+   * one whose batch {@code authorize(AuthorizationState, List)} denies any entity whose leaf name
+   * satisfies {@code denyIfLeafName}. All other authorization (parent-level old-SPI calls) goes
+   * through the real {@link PolarisAuthorizerImpl}.
+   */
+  private IcebergCatalogHandler newHandlerWithEntityLevelFiltering(
+      Predicate<String> denyIfLeafName) {
+    PolarisPrincipal authenticatedPrincipal =
+        PolarisPrincipal.of(principalEntity, Set.of(PRINCIPAL_ROLE1));
+
+    PolarisAuthorizer filteringAuthorizer =
+        new PolarisAuthorizerImpl(realmConfig) {
+          @Override
+          public List<AuthorizationDecision> authorize(
+              AuthorizationState authzState, List<AuthorizationRequest> requests) {
+            return requests.stream()
+                .map(
+                    req -> {
+                      SingleTargetAuthorizationIntent intent =
+                          (SingleTargetAuthorizationIntent) req.intents().get(0);
+                      return denyIfLeafName.test(intent.target().getLeaf().name())
+                          ? AuthorizationDecision.deny("filtered in test")
+                          : AuthorizationDecision.allow();
+                    })
+                .toList();
+          }
+        };
+
+    IcebergCatalogHandler handler =
+        icebergCatalogHandlerFactory.createHandler(CATALOG_NAME, authenticatedPrincipal);
+    return ImmutableIcebergCatalogHandler.builder()
+        .from(handler)
+        .authorizer(filteringAuthorizer)
+        .build();
+  }
+
+    protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
+    enableEntityLevelListFiltering();
+    // Parent-level check passes: NAMESPACE_LIST granted at catalog level.
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.NAMESPACE_LIST));
+
+    Assertions.assertThat(
+            newHandlerWithEntityLevelFiltering("ns2"::equals)
+                .listNamespaces(Namespace.of())
+                .namespaces())
+        .contains(NS1)
+        .doesNotContain(NS2);
+  }
+
+    protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables() {
+        enableEntityLevelListFiltering();
+        // Parent-level check passes: TABLE_LIST granted at catalog level cascades to NS1A.
+        assertSuccess(
+                adminService.grantPrivilegeOnCatalogToRole(
+                        CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.TABLE_LIST));
+
+        Assertions.assertThat(
+                        newHandlerWithEntityLevelFiltering("table2"::equals).listTables(NS1A).identifiers())
+                .contains(TABLE_NS1A_1)
+                .doesNotContain(TABLE_NS1A_2);
+    }
+
+    protected void verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews() {
+        enableEntityLevelListFiltering();
+        // Parent-level check passes: VIEW_LIST granted at catalog level cascades to NS1A.
+        assertSuccess(
+                adminService.grantPrivilegeOnCatalogToRole(
+                        CATALOG_NAME, CATALOG_ROLE1, PolarisPrivilege.VIEW_LIST));
+
+        Assertions.assertThat(
+                        newHandlerWithEntityLevelFiltering("view2"::equals).listViews(NS1A).identifiers())
+                .contains(VIEW_NS1A_1)
+                .doesNotContain(VIEW_NS1A_2);
+    }
 }

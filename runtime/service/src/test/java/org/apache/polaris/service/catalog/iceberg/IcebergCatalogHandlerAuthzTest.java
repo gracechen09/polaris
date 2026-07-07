@@ -21,7 +21,24 @@ package org.apache.polaris.service.catalog.iceberg;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import org.apache.polaris.service.Profiles;
+import org.junit.jupiter.api.Test;
 
 @QuarkusTest
 @TestProfile(Profiles.PolarisAuthzBaseProfile.class)
-public class IcebergCatalogHandlerAuthzTest extends AbstractIcebergCatalogHandlerAuthzTest {}
+public class IcebergCatalogHandlerAuthzTest extends AbstractIcebergCatalogHandlerAuthzTest {
+
+	@Test
+	void testEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces() {
+		verifyEntityLevelListFilteringEnabled_filtersUnauthorizedNamespaces();
+	}
+
+	@Test
+	void testEntityLevelListFilteringEnabled_filtersUnauthorizedTables() {
+		verifyEntityLevelListFilteringEnabled_filtersUnauthorizedTables();
+	}
+
+	@Test
+	void testEntityLevelListFilteringEnabled_filtersUnauthorizedViews() {
+		verifyEntityLevelListFilteringEnabled_filtersUnauthorizedViews();
+	}
+}

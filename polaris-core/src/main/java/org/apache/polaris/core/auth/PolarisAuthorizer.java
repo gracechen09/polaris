@@ -54,6 +54,20 @@ public interface PolarisAuthorizer {
       @NonNull AuthorizationState authzState, @NonNull AuthorizationRequest request);
 
   /**
+   * Batch authorization entry point.
+   *
+   * <p>The default implementation evaluates each request independently by delegating to {@link
+   * #authorize(AuthorizationState, AuthorizationRequest)}. Implementations may override this method
+   * to for improved performance.
+   *
+   * <p>The returned list preserves the same size and order as {@code requests}.
+   */
+  default @NonNull List<AuthorizationDecision> authorize(
+      @NonNull AuthorizationState authzState, @NonNull List<AuthorizationRequest> requests) {
+    return requests.stream().map(request -> authorize(authzState, request)).toList();
+  }
+
+  /**
    * Convenience method that throws a {@link ForbiddenException} when authorization is denied.
    *
    * <p>Implementations should provide allow/deny decisions via {@link #authorize}.
@@ -80,19 +94,4 @@ public interface PolarisAuthorizer {
       @NonNull PolarisAuthorizableOperation authzOp,
       @Nullable List<PolarisResolvedPathWrapper> targets,
       @Nullable List<PolarisResolvedPathWrapper> secondaries);
-
-  /**
-   * Filters a candidate list of securables to only those the principal is authorized to see.
-   *
-   * <p>The default implementation returns all candidates unchanged, preserving backward
-   * compatibility for authorizers that do not implement visibility filtering.
-   *
-   * <p>If filtering encounters an error, implementations should throw rather than fall back to
-   * returning unfiltered results.
-   */
-  @NonNull
-  default List<PolarisSecurable> filterByVisibility(
-      @NonNull AuthorizationState authzState, @NonNull VisibilityFilterRequest request) {
-    return request.candidates();
-  }
 }
