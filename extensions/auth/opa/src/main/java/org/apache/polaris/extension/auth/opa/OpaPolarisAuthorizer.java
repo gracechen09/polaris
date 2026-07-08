@@ -340,7 +340,6 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   }
 
   private ImmutableContext buildContext() {
-    // "requestId" matches RequestIdFilter.REQUEST_ID_KEY set by LoggingMDCFilter
     String requestId = MDC.get("requestId");
     return ImmutableContext.builder()
         .requestId(requestId != null ? requestId : UUID.randomUUID().toString())
