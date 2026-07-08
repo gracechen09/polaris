@@ -68,6 +68,9 @@ import org.apache.polaris.extension.auth.opa.model.ResourceEntity;
 import org.apache.polaris.extension.auth.opa.token.BearerTokenProvider;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /**
  * OPA-based implementation of {@link PolarisAuthorizer}.
@@ -81,6 +84,8 @@ import org.jspecify.annotations.Nullable;
  * environments.
  */
 class OpaPolarisAuthorizer implements PolarisAuthorizer {
+  private static final Logger LOGGER = LoggerFactory.getLogger(OpaPolarisAuthorizer.class);
+
   private final URI policyUri;
   private final BearerTokenProvider tokenProvider;
   private final CloseableHttpClient httpClient;
@@ -277,6 +282,7 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   private boolean queryOpaCheckResponse(ClassicHttpResponse response) throws IOException {
     int statusCode = response.getCode();
     if (statusCode != 200) {
+      LOGGER.warn("OPA returned unexpected HTTP status {}, treating as deny", statusCode);
       return false;
     }
 
@@ -334,7 +340,11 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   }
 
   private ImmutableContext buildContext() {
-    return ImmutableContext.builder().requestId(UUID.randomUUID().toString()).build();
+    // "requestId" matches RequestIdFilter.REQUEST_ID_KEY set by LoggingMDCFilter
+    String requestId = MDC.get("requestId");
+    return ImmutableContext.builder()
+        .requestId(requestId != null ? requestId : UUID.randomUUID().toString())
+        .build();
   }
 
   private ImmutableResource buildResource(
