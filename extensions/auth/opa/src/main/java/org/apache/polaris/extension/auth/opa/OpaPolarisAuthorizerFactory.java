@@ -24,6 +24,7 @@ import io.smallrye.common.annotation.Identifier;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.net.URI;
@@ -34,6 +35,7 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.auth.PolarisAuthorizerFactory;
 import org.apache.polaris.core.config.RealmConfig;
+import org.apache.polaris.core.context.RequestIdSupplier;
 import org.apache.polaris.extension.auth.opa.token.BearerTokenProvider;
 import org.apache.polaris.extension.auth.opa.token.FileBearerTokenProvider;
 import org.apache.polaris.extension.auth.opa.token.StaticBearerTokenProvider;
@@ -52,15 +54,20 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
   private final Clock clock;
   private final ObjectMapper objectMapper;
   private final AsyncExec asyncExec;
+  private final Instance<RequestIdSupplier> requestIdSupplier;
   private CloseableHttpClient httpClient;
   private BearerTokenProvider bearerTokenProvider;
 
   @Inject
   public OpaPolarisAuthorizerFactory(
-      OpaAuthorizationConfig opaConfig, Clock clock, AsyncExec asyncExec) {
+      OpaAuthorizationConfig opaConfig,
+      Clock clock,
+      AsyncExec asyncExec,
+      Instance<RequestIdSupplier> requestIdSupplier) {
     this.opaConfig = opaConfig;
     this.clock = clock;
     this.asyncExec = asyncExec;
+    this.requestIdSupplier = requestIdSupplier;
     this.objectMapper = JsonMapper.builder().build();
   }
 
@@ -96,7 +103,8 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
                     new IllegalStateException(
                         "OPA policy URI must be configured via polaris.authorization.opa.policy-uri"));
 
-    return new OpaPolarisAuthorizer(policyUri, httpClient, objectMapper, bearerTokenProvider);
+    return new OpaPolarisAuthorizer(
+        policyUri, httpClient, objectMapper, bearerTokenProvider, requestIdSupplier);
   }
 
   @PreDestroy

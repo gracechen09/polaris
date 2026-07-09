@@ -21,6 +21,7 @@ package org.apache.polaris.extension.auth.opa;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import jakarta.enterprise.inject.Instance;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -55,6 +56,7 @@ import org.apache.polaris.core.auth.RoleAssignmentAuthorizationIntent;
 import org.apache.polaris.core.auth.RootPrivilegeGrantAuthorizationIntent;
 import org.apache.polaris.core.auth.SingleTargetAuthorizationIntent;
 import org.apache.polaris.core.auth.TargetlessAuthorizationIntent;
+import org.apache.polaris.core.context.RequestIdSupplier;
 import org.apache.polaris.core.entity.PolarisBaseEntity;
 import org.apache.polaris.core.persistence.PolarisResolvedPathWrapper;
 import org.apache.polaris.core.persistence.ResolvedPolarisEntity;
@@ -70,7 +72,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 
 /**
  * OPA-based implementation of {@link PolarisAuthorizer}.
@@ -90,6 +91,7 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   private final BearerTokenProvider tokenProvider;
   private final CloseableHttpClient httpClient;
   private final ObjectMapper objectMapper;
+  private final Instance<RequestIdSupplier> requestIdSupplier;
 
   /**
    * Public constructor that accepts a complete policy URI.
@@ -101,17 +103,21 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
    * @param objectMapper Jackson ObjectMapper for JSON serialization (required). Shared across
    *     authorizer instances to avoid initialization overhead.
    * @param tokenProvider Token provider for authentication (optional)
+   * @param requestIdSupplier Supplier for the server-generated request ID (optional), used to
+   *     correlate OPA queries with the originating HTTP request
    */
   public OpaPolarisAuthorizer(
       @NonNull URI policyUri,
       @NonNull CloseableHttpClient httpClient,
       @NonNull ObjectMapper objectMapper,
-      @Nullable BearerTokenProvider tokenProvider) {
+      @Nullable BearerTokenProvider tokenProvider,
+      @Nullable Instance<RequestIdSupplier> requestIdSupplier) {
 
     this.policyUri = policyUri;
     this.tokenProvider = tokenProvider;
     this.httpClient = httpClient;
     this.objectMapper = objectMapper;
+    this.requestIdSupplier = requestIdSupplier;
   }
 
   /**
@@ -340,7 +346,10 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   }
 
   private ImmutableContext buildContext() {
-    String requestId = MDC.get("requestId");
+    String requestId = null;
+    if (requestIdSupplier != null && requestIdSupplier.isResolvable()) {
+      requestId = requestIdSupplier.get().getRequestId();
+    }
     return ImmutableContext.builder()
         .requestId(requestId != null ? requestId : UUID.randomUUID().toString())
         .build();

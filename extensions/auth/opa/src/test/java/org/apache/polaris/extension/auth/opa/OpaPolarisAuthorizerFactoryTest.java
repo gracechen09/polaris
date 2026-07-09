@@ -63,7 +63,7 @@ public class OpaPolarisAuthorizerFactoryTest {
 
     try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
       OpaPolarisAuthorizerFactory factory =
-          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec);
+          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, null);
 
       // Create authorizer
       RealmConfig realmConfig = mock(RealmConfig.class);
@@ -107,7 +107,7 @@ public class OpaPolarisAuthorizerFactoryTest {
 
     try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
       OpaPolarisAuthorizerFactory factory =
-          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec);
+          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, null);
 
       // Create authorizer
       RealmConfig realmConfig = mock(RealmConfig.class);
@@ -151,7 +151,7 @@ public class OpaPolarisAuthorizerFactoryTest {
 
     try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
       OpaPolarisAuthorizerFactory factory =
-          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec);
+          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, null);
 
       // Create authorizer
       RealmConfig realmConfig = mock(RealmConfig.class);

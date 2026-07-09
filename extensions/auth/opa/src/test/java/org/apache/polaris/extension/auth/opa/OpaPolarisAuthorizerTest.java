@@ -87,7 +87,7 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null);
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
 
       PolarisPrincipal principal =
           PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
@@ -132,7 +132,7 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null);
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
 
       // Set up a realistic principal
       PolarisPrincipal principal =
@@ -263,7 +263,7 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null);
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
 
       // Set up a realistic principal
       PolarisPrincipal principal =
@@ -427,7 +427,7 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null);
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
 
       PolarisPrincipal principal = PolarisPrincipal.of("alice", Map.of(), Set.of("admin"));
 
@@ -473,7 +473,7 @@ public class OpaPolarisAuthorizerTest {
     URI policyUri = URI.create("http://opa.example.com:8181/v1/data/polaris/allow");
     OpaPolarisAuthorizer authorizer =
         new OpaPolarisAuthorizer(
-            policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), tokenProvider);
+            policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), tokenProvider, null);
 
     assertThat(authorizer).isNotNull();
   }
@@ -492,7 +492,7 @@ public class OpaPolarisAuthorizerTest {
             policyUri,
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            tokenProvider) {
+            tokenProvider, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -535,7 +535,7 @@ public class OpaPolarisAuthorizerTest {
             policyUri,
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            tokenProvider) {
+            tokenProvider, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -573,7 +573,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null);
+            null, null);
     PolarisResolutionManifest resolutionManifest = mock(PolarisResolutionManifest.class);
     AuthorizationState authzState = new AuthorizationState(resolutionManifest);
     PolarisPrincipal principal = PolarisPrincipal.of("alice", Map.of(), Set.of("role-1"));
@@ -600,7 +600,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null) {
+            null, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -648,7 +648,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null) {
+            null, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -695,7 +695,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null) {
+            null, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -739,7 +739,7 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null);
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
 
       PolarisEntity rootEntity =
           new PolarisEntity.Builder()
@@ -808,7 +808,7 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null);
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
 
       PolarisEntity rootEntity =
           new PolarisEntity.Builder()
@@ -879,7 +879,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null) {
+            null, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -944,7 +944,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null) {
+            null, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -1030,7 +1030,7 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null) {
+            null, null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
