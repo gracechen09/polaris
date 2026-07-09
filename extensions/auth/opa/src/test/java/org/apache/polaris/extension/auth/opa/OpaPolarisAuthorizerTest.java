@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import jakarta.enterprise.inject.Instance;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -39,6 +41,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -58,6 +61,7 @@ import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.auth.PolarisSecurable;
 import org.apache.polaris.core.auth.RenameAuthorizationIntent;
 import org.apache.polaris.core.auth.SingleTargetAuthorizationIntent;
+import org.apache.polaris.core.context.RequestIdSupplier;
 import org.apache.polaris.core.entity.PolarisBaseEntity;
 import org.apache.polaris.core.entity.PolarisEntity;
 import org.apache.polaris.core.entity.PolarisEntityConstants;
@@ -1053,6 +1057,137 @@ public class OpaPolarisAuthorizerTest {
 
     assertThat(decision.isAllowed()).isTrue();
     assertThat(requestCount[0]).isEqualTo(2);
+  }
+
+  @Test
+  void requestIdComesFromResolvableSupplier() throws Exception {
+    final String[] capturedRequestBody = new String[1];
+
+    HttpServer server = createServerWithRequestCapture(capturedRequestBody);
+    try {
+      URI policyUri =
+          URI.create(
+              "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
+
+      RequestIdSupplier supplier = mock(RequestIdSupplier.class);
+      when(supplier.getRequestId()).thenReturn("test-id");
+      @SuppressWarnings("unchecked")
+      Instance<RequestIdSupplier> requestIdSupplier = mock(Instance.class);
+      when(requestIdSupplier.isResolvable()).thenReturn(true);
+      when(requestIdSupplier.get()).thenReturn(supplier);
+
+      OpaPolarisAuthorizer authorizer =
+          new OpaPolarisAuthorizer(
+              policyUri,
+              HttpClients.createDefault(),
+              JsonMapper.builder().build(),
+              null,
+              requestIdSupplier);
+
+      PolarisPrincipal principal =
+          PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
+      PolarisResolvedPathWrapper target = new PolarisResolvedPathWrapper(List.of());
+      PolarisResolvedPathWrapper secondary = new PolarisResolvedPathWrapper(List.of());
+
+      assertThatNoException()
+          .isThrownBy(
+              () ->
+                  authorizer.authorizeOrThrow(
+                      principal,
+                      Set.of(),
+                      PolarisAuthorizableOperation.LOAD_VIEW,
+                      target,
+                      secondary));
+
+      ObjectMapper mapper = JsonMapper.builder().build();
+      JsonNode root = mapper.readTree(capturedRequestBody[0]);
+      assertThat(root.at("/input/context/request_id").asText()).isEqualTo("test-id");
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  void requestIdFallsBackToRandomUuidWhenSupplierUnresolvable() throws Exception {
+    final String[] capturedRequestBody = new String[1];
+
+    HttpServer server = createServerWithRequestCapture(capturedRequestBody);
+    try {
+      URI policyUri =
+          URI.create(
+              "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
+
+      @SuppressWarnings("unchecked")
+      Instance<RequestIdSupplier> requestIdSupplier = mock(Instance.class);
+      when(requestIdSupplier.isResolvable()).thenReturn(false);
+
+      OpaPolarisAuthorizer authorizer =
+          new OpaPolarisAuthorizer(
+              policyUri,
+              HttpClients.createDefault(),
+              JsonMapper.builder().build(),
+              null,
+              requestIdSupplier);
+
+      PolarisPrincipal principal =
+          PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
+      PolarisResolvedPathWrapper target = new PolarisResolvedPathWrapper(List.of());
+      PolarisResolvedPathWrapper secondary = new PolarisResolvedPathWrapper(List.of());
+
+      assertThatNoException()
+          .isThrownBy(
+              () ->
+                  authorizer.authorizeOrThrow(
+                      principal,
+                      Set.of(),
+                      PolarisAuthorizableOperation.LOAD_VIEW,
+                      target,
+                      secondary));
+
+      ObjectMapper mapper = JsonMapper.builder().build();
+      JsonNode root = mapper.readTree(capturedRequestBody[0]);
+      String requestId = root.at("/input/context/request_id").asText();
+      assertThatNoException().isThrownBy(() -> UUID.fromString(requestId));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  void requestIdFallsBackToRandomUuidWhenSupplierIsNull() throws Exception {
+    final String[] capturedRequestBody = new String[1];
+
+    HttpServer server = createServerWithRequestCapture(capturedRequestBody);
+    try {
+      URI policyUri =
+          URI.create(
+              "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
+      OpaPolarisAuthorizer authorizer =
+          new OpaPolarisAuthorizer(
+              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
+
+      PolarisPrincipal principal =
+          PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
+      PolarisResolvedPathWrapper target = new PolarisResolvedPathWrapper(List.of());
+      PolarisResolvedPathWrapper secondary = new PolarisResolvedPathWrapper(List.of());
+
+      assertThatNoException()
+          .isThrownBy(
+              () ->
+                  authorizer.authorizeOrThrow(
+                      principal,
+                      Set.of(),
+                      PolarisAuthorizableOperation.LOAD_VIEW,
+                      target,
+                      secondary));
+
+      ObjectMapper mapper = JsonMapper.builder().build();
+      JsonNode root = mapper.readTree(capturedRequestBody[0]);
+      String requestId = root.at("/input/context/request_id").asText();
+      assertThatNoException().isThrownBy(() -> UUID.fromString(requestId));
+    } finally {
+      server.stop(0);
+    }
   }
 
   private AuthorizationRequest requestWithCatalogTarget(PolarisPrincipal principal) {
