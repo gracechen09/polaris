@@ -313,6 +313,8 @@ public class OpaPolarisAuthorizerFactoryTest {
     }
   }
 
+  // Reused the helper from PR https://github.com/apache/polaris/pull/4992/changes#diff-276bca1175392a4ab4e29ac695a8442422f6a54378320cadfe495db6dd6cc6b2
+  // Can be removed once the PR above is merged
   private HttpServer createServerWithRequestCapture(String[] capturedRequestBody)
       throws IOException {
     HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
