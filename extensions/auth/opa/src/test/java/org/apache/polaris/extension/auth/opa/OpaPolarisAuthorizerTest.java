@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,7 +29,6 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import jakarta.enterprise.inject.Instance;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -61,7 +59,6 @@ import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.auth.PolarisSecurable;
 import org.apache.polaris.core.auth.RenameAuthorizationIntent;
 import org.apache.polaris.core.auth.SingleTargetAuthorizationIntent;
-import org.apache.polaris.core.context.RequestIdSupplier;
 import org.apache.polaris.core.entity.PolarisBaseEntity;
 import org.apache.polaris.core.entity.PolarisEntity;
 import org.apache.polaris.core.entity.PolarisEntityConstants;
@@ -477,7 +474,11 @@ public class OpaPolarisAuthorizerTest {
     URI policyUri = URI.create("http://opa.example.com:8181/v1/data/polaris/allow");
     OpaPolarisAuthorizer authorizer =
         new OpaPolarisAuthorizer(
-            policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), tokenProvider, null);
+            policyUri,
+            HttpClients.createDefault(),
+            JsonMapper.builder().build(),
+            tokenProvider,
+            null);
 
     assertThat(authorizer).isNotNull();
   }
@@ -496,7 +497,8 @@ public class OpaPolarisAuthorizerTest {
             policyUri,
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            tokenProvider, null) {
+            tokenProvider,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -539,7 +541,8 @@ public class OpaPolarisAuthorizerTest {
             policyUri,
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            tokenProvider, null) {
+            tokenProvider,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -577,7 +580,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null);
+            null,
+            null);
     PolarisResolutionManifest resolutionManifest = mock(PolarisResolutionManifest.class);
     AuthorizationState authzState = new AuthorizationState(resolutionManifest);
     PolarisPrincipal principal = PolarisPrincipal.of("alice", Map.of(), Set.of("role-1"));
@@ -604,7 +608,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null) {
+            null,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -652,7 +657,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null) {
+            null,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -699,7 +705,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null) {
+            null,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -883,7 +890,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null) {
+            null,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -948,7 +956,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null) {
+            null,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -1034,7 +1043,8 @@ public class OpaPolarisAuthorizerTest {
             URI.create("http://opa.example.com:8181/v1/data/polaris/allow"),
             mock(CloseableHttpClient.class),
             JsonMapper.builder().build(),
-            null, null) {
+            null,
+            null) {
           @Override
           <T> T httpClientExecute(
               ClassicHttpRequest request, HttpClientResponseHandler<? extends T> responseHandler)
@@ -1060,7 +1070,7 @@ public class OpaPolarisAuthorizerTest {
   }
 
   @Test
-  void requestIdComesFromResolvableSupplier() throws Exception {
+  void requestIdIsIncludedInContextWhenProvided() throws Exception {
     final String[] capturedRequestBody = new String[1];
 
     HttpServer server = createServerWithRequestCapture(capturedRequestBody);
@@ -1069,20 +1079,13 @@ public class OpaPolarisAuthorizerTest {
           URI.create(
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
 
-      RequestIdSupplier supplier = mock(RequestIdSupplier.class);
-      when(supplier.getRequestId()).thenReturn("test-id");
-      @SuppressWarnings("unchecked")
-      Instance<RequestIdSupplier> requestIdSupplier = mock(Instance.class);
-      when(requestIdSupplier.isResolvable()).thenReturn(true);
-      when(requestIdSupplier.get()).thenReturn(supplier);
-
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
               policyUri,
               HttpClients.createDefault(),
               JsonMapper.builder().build(),
               null,
-              requestIdSupplier);
+              "test-id");
 
       PolarisPrincipal principal =
           PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
@@ -1108,53 +1111,7 @@ public class OpaPolarisAuthorizerTest {
   }
 
   @Test
-  void requestIdFallsBackToRandomUuidWhenSupplierUnresolvable() throws Exception {
-    final String[] capturedRequestBody = new String[1];
-
-    HttpServer server = createServerWithRequestCapture(capturedRequestBody);
-    try {
-      URI policyUri =
-          URI.create(
-              "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
-
-      @SuppressWarnings("unchecked")
-      Instance<RequestIdSupplier> requestIdSupplier = mock(Instance.class);
-      when(requestIdSupplier.isResolvable()).thenReturn(false);
-
-      OpaPolarisAuthorizer authorizer =
-          new OpaPolarisAuthorizer(
-              policyUri,
-              HttpClients.createDefault(),
-              JsonMapper.builder().build(),
-              null,
-              requestIdSupplier);
-
-      PolarisPrincipal principal =
-          PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
-      PolarisResolvedPathWrapper target = new PolarisResolvedPathWrapper(List.of());
-      PolarisResolvedPathWrapper secondary = new PolarisResolvedPathWrapper(List.of());
-
-      assertThatNoException()
-          .isThrownBy(
-              () ->
-                  authorizer.authorizeOrThrow(
-                      principal,
-                      Set.of(),
-                      PolarisAuthorizableOperation.LOAD_VIEW,
-                      target,
-                      secondary));
-
-      ObjectMapper mapper = JsonMapper.builder().build();
-      JsonNode root = mapper.readTree(capturedRequestBody[0]);
-      String requestId = root.at("/input/context/request_id").asText();
-      assertThatNoException().isThrownBy(() -> UUID.fromString(requestId));
-    } finally {
-      server.stop(0);
-    }
-  }
-
-  @Test
-  void requestIdFallsBackToRandomUuidWhenSupplierIsNull() throws Exception {
+  void requestIdFallsBackToRandomUuidWhenNull() throws Exception {
     final String[] capturedRequestBody = new String[1];
 
     HttpServer server = createServerWithRequestCapture(capturedRequestBody);

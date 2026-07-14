@@ -24,7 +24,6 @@ import io.smallrye.common.annotation.Identifier;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.net.URI;
@@ -54,7 +53,7 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
   private final Clock clock;
   private final ObjectMapper objectMapper;
   private final AsyncExec asyncExec;
-  private final Instance<RequestIdSupplier> requestIdSupplier;
+  private final RequestIdSupplier requestIdSupplier;
   private CloseableHttpClient httpClient;
   private BearerTokenProvider bearerTokenProvider;
 
@@ -63,7 +62,7 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
       OpaAuthorizationConfig opaConfig,
       Clock clock,
       AsyncExec asyncExec,
-      Instance<RequestIdSupplier> requestIdSupplier) {
+      RequestIdSupplier requestIdSupplier) {
     this.opaConfig = opaConfig;
     this.clock = clock;
     this.asyncExec = asyncExec;
@@ -104,7 +103,7 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
                         "OPA policy URI must be configured via polaris.authorization.opa.policy-uri"));
 
     return new OpaPolarisAuthorizer(
-        policyUri, httpClient, objectMapper, bearerTokenProvider, requestIdSupplier);
+        policyUri, httpClient, objectMapper, bearerTokenProvider, requestIdSupplier.getRequestId());
   }
 
   @PreDestroy
