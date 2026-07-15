@@ -35,6 +35,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -127,6 +128,7 @@ import org.apache.polaris.core.persistence.resolver.ResolverFactory;
 import org.apache.polaris.core.persistence.resolver.ResolverPath;
 import org.apache.polaris.core.persistence.resolver.ResolverStatus;
 import org.apache.polaris.core.storage.PolarisStorageActions;
+import org.apache.polaris.core.storage.PolarisStorageConfigurationInfo;
 import org.apache.polaris.core.storage.StorageAccessConfig;
 import org.apache.polaris.core.storage.StorageLocation;
 import org.apache.polaris.core.storage.StorageUtil;
@@ -134,7 +136,6 @@ import org.apache.polaris.service.catalog.SupportsNotifications;
 import org.apache.polaris.service.catalog.common.CatalogUtils;
 import org.apache.polaris.service.catalog.common.LocationUtils;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
-import org.apache.polaris.service.catalog.io.FileIOUtil;
 import org.apache.polaris.service.catalog.io.StorageAccessConfigProvider;
 import org.apache.polaris.service.catalog.validation.IcebergPropertiesValidation;
 import org.apache.polaris.service.events.EventAttributeMap;
@@ -143,6 +144,8 @@ import org.apache.polaris.service.events.PolarisEvent;
 import org.apache.polaris.service.events.PolarisEventDispatcher;
 import org.apache.polaris.service.events.PolarisEventMetadataFactory;
 import org.apache.polaris.service.events.PolarisEventType;
+import org.apache.polaris.service.idempotency.EntityIdempotency;
+import org.apache.polaris.service.idempotency.IdempotencyRequestContext;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.apache.polaris.service.types.NotificationType;
@@ -197,6 +200,10 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
   private final FileIOFactory fileIOFactory;
   private PolarisMetaStoreManager metaStoreManager;
 
+  // Entity-property idempotency: when the request context carries a key, it is stamped into the new
+  // table entity's internal properties within the same transaction as the create.
+  private final IdempotencyRequestContext idempotencyRequestContext;
+
   private Consumer<MetadataFileCleanup> deleteRemovedMetadataFiles =
       LocalIcebergCatalog::defaultDeleteRemovedMetadataFiles;
 
@@ -223,6 +230,34 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
       FileIOFactory fileIOFactory,
       PolarisEventDispatcher polarisEventDispatcher,
       PolarisEventMetadataFactory eventMetadataFactory) {
+    this(
+        diagnostics,
+        resolverFactory,
+        metaStoreManager,
+        callContext,
+        resolvedEntityView,
+        principal,
+        taskExecutor,
+        storageAccessConfigProvider,
+        fileIOFactory,
+        polarisEventDispatcher,
+        eventMetadataFactory,
+        IdempotencyRequestContext.DISABLED);
+  }
+
+  public LocalIcebergCatalog(
+      PolarisDiagnostics diagnostics,
+      ResolverFactory resolverFactory,
+      PolarisMetaStoreManager metaStoreManager,
+      CallContext callContext,
+      PolarisResolutionManifestCatalogView resolvedEntityView,
+      PolarisPrincipal principal,
+      TaskExecutor taskExecutor,
+      StorageAccessConfigProvider storageAccessConfigProvider,
+      FileIOFactory fileIOFactory,
+      PolarisEventDispatcher polarisEventDispatcher,
+      PolarisEventMetadataFactory eventMetadataFactory,
+      IdempotencyRequestContext idempotencyRequestContext) {
     this.diagnostics = diagnostics;
     this.resolverFactory = resolverFactory;
     this.callContext = callContext;
@@ -238,6 +273,7 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
     this.metaStoreManager = metaStoreManager;
     this.polarisEventDispatcher = polarisEventDispatcher;
     this.eventMetadataFactory = eventMetadataFactory;
+    this.idempotencyRequestContext = idempotencyRequestContext;
   }
 
   @Override
@@ -479,9 +515,14 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
 
   @Override
   protected String defaultWarehouseLocation(TableIdentifier tableIdentifier) {
+    String prefixedLocation = applyDefaultLocationObjectStoragePrefix(tableIdentifier, null);
+    if (prefixedLocation != null) {
+      return prefixedLocation;
+    }
+
+    String namespaceLocation;
     if (tableIdentifier.namespace().isEmpty()) {
-      return SLASH.join(
-          defaultNamespaceLocation(tableIdentifier.namespace()), tableIdentifier.name());
+      namespaceLocation = defaultBaseLocation;
     } else {
       PolarisResolvedPathWrapper resolvedNamespace =
           resolvedEntityView.getResolvedPath(
@@ -490,17 +531,17 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
         throw noSuchNamespaceException(tableIdentifier.namespace());
       }
       List<PolarisEntity> namespacePath = resolvedNamespace.getRawFullPath();
-      String namespaceLocation = resolveLocationForPath(diagnostics, namespacePath);
-      return SLASH.join(namespaceLocation, tableIdentifier.name());
+      namespaceLocation = resolveLocationForPath(diagnostics, namespacePath);
     }
+    return SLASH.join(namespaceLocation, defaultTableLikeName(tableIdentifier));
   }
 
-  private String defaultNamespaceLocation(Namespace namespace) {
-    if (namespace.isEmpty()) {
-      return defaultBaseLocation;
-    } else {
-      return SLASH.join(defaultBaseLocation, SLASH.join(namespace.levels()));
+  private String defaultTableLikeName(TableIdentifier tableIdentifier) {
+    if (realmConfig.getConfig(
+        FeatureConfiguration.DEFAULT_UNIQUE_TABLE_LOCATION_ENABLED, catalogEntity)) {
+      return LocationUtil.tableLocation(tableIdentifier, true);
     }
+    return tableIdentifier.name();
   }
 
   @Override
@@ -514,7 +555,7 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
     }
 
     Optional<PolarisEntity> storageInfoEntity =
-        FileIOUtil.findStorageInfoFromHierarchy(
+        PolarisStorageConfigurationInfo.findEntityWithStorageConfigFromHierarchy(
             CatalogUtils.findResolvedStorageEntity(resolvedEntityView, tableIdentifier));
 
     // The storageProperties we stash away in the Task should be the superset of the
@@ -1078,7 +1119,8 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
                 : resolvedEntityView.getResolvedPath(
                     ResolvedPathKey.ofNamespace(identifier.namespace()));
         Optional<PolarisEntity> storageInfoEntity =
-            FileIOUtil.findStorageInfoFromHierarchy(storageHierarchy);
+            PolarisStorageConfigurationInfo.findEntityWithStorageConfigFromHierarchy(
+                storageHierarchy);
 
         storageInfoEntity.map(PolarisEntity::getInternalPropertiesAsMap).ifPresent(clone::putAll);
         clone.put(PolarisTaskConstants.STORAGE_LOCATION, lastMetadata.location());
@@ -1153,7 +1195,7 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
     }
     locationBuilder
         .append("/")
-        .append(URLEncoder.encode(tableIdentifier.name(), Charset.defaultCharset()))
+        .append(URLEncoder.encode(defaultTableLikeName(tableIdentifier), Charset.defaultCharset()))
         .append("/");
     return locationBuilder.toString();
   }
@@ -1832,12 +1874,23 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
       String existingLocation;
       if (null == entity) {
         existingLocation = null;
+        Map<String, String> internalProperties = storedProperties;
+        if (idempotencyRequestContext.isActive()) {
+          // Embed the idempotency key into the new entity's internal properties so it is persisted
+          // in the same transaction as the table create (no separate idempotency-store write).
+          internalProperties =
+              EntityIdempotency.recordKey(
+                  storedProperties,
+                  idempotencyRequestContext.pendingKey(),
+                  idempotencyRequestContext.pendingExpiry(),
+                  Instant.now());
+        }
         entity =
             new IcebergTableLikeEntity.Builder(
                     PolarisEntitySubType.ICEBERG_TABLE,
                     tableIdentifier,
                     Map.of(),
-                    storedProperties,
+                    internalProperties,
                     newLocation)
                 .setCatalogId(getCatalogId())
                 .setBaseLocation(metadata.location())
@@ -2434,9 +2487,11 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
 
   private void validateMetadataFileInTableDir(
       TableIdentifier identifier, String tableLocation, String metadataLocation) {
-    boolean allowEscape = realmConfig.getConfig(FeatureConfiguration.ALLOW_EXTERNAL_TABLE_LOCATION);
+    boolean allowEscape =
+        realmConfig.getConfig(FeatureConfiguration.ALLOW_EXTERNAL_TABLE_LOCATION, catalogEntity);
     if (!allowEscape
-        && !realmConfig.getConfig(FeatureConfiguration.ALLOW_EXTERNAL_METADATA_FILE_LOCATION)) {
+        && !realmConfig.getConfig(
+            FeatureConfiguration.ALLOW_EXTERNAL_METADATA_FILE_LOCATION, catalogEntity)) {
       LOGGER.debug(
           "Validating base location {} for table {} in metadata file {}",
           tableLocation,
@@ -2793,7 +2848,9 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
         resolvedStorageEntity =
             resolvedEntityView.getResolvedPath(ResolvedPathKey.ofNamespace(nsLevel));
         if (resolvedStorageEntity != null) {
-          storageInfoEntity = FileIOUtil.findStorageInfoFromHierarchy(resolvedStorageEntity);
+          storageInfoEntity =
+              PolarisStorageConfigurationInfo.findEntityWithStorageConfigFromHierarchy(
+                  resolvedStorageEntity);
           break;
         }
       }

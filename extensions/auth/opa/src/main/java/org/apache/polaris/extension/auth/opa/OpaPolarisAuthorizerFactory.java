@@ -35,6 +35,7 @@ import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.auth.PolarisAuthorizerFactory;
 import org.apache.polaris.core.config.RealmConfig;
 import org.apache.polaris.core.context.RequestIdSupplier;
+import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.extension.auth.opa.token.BearerTokenProvider;
 import org.apache.polaris.extension.auth.opa.token.FileBearerTokenProvider;
 import org.apache.polaris.extension.auth.opa.token.StaticBearerTokenProvider;
@@ -54,6 +55,7 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
   private final ObjectMapper objectMapper;
   private final AsyncExec asyncExec;
   private final RequestIdSupplier requestIdSupplier;
+  private final RealmContext realmContext;
   private CloseableHttpClient httpClient;
   private BearerTokenProvider bearerTokenProvider;
 
@@ -62,11 +64,13 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
       OpaAuthorizationConfig opaConfig,
       Clock clock,
       AsyncExec asyncExec,
-      RequestIdSupplier requestIdSupplier) {
+      RequestIdSupplier requestIdSupplier,
+      RealmContext realmContext) {
     this.opaConfig = opaConfig;
     this.clock = clock;
     this.asyncExec = asyncExec;
     this.requestIdSupplier = requestIdSupplier;
+    this.realmContext = realmContext;
     this.objectMapper = JsonMapper.builder().build();
   }
 
@@ -103,7 +107,12 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
                         "OPA policy URI must be configured via polaris.authorization.opa.policy-uri"));
 
     return new OpaPolarisAuthorizer(
-        policyUri, httpClient, objectMapper, bearerTokenProvider, requestIdSupplier.getRequestId());
+        policyUri,
+        httpClient,
+        objectMapper,
+        bearerTokenProvider,
+        requestIdSupplier.getRequestId(),
+        realmContext.getRealmIdentifier());
   }
 
   @PreDestroy
@@ -177,13 +186,17 @@ class OpaPolarisAuthorizerFactory implements PolarisAuthorizerFactory {
       Duration refreshInterval = fileConfig.refreshInterval().orElse(Duration.ofMinutes(5));
       boolean jwtExpirationRefresh = fileConfig.jwtExpirationRefresh().orElse(true);
       Duration jwtExpirationBuffer = fileConfig.jwtExpirationBuffer().orElse(Duration.ofMinutes(1));
+      Duration initialTokenWait = fileConfig.initialTokenWait().orElse(Duration.ofSeconds(5));
+      Duration refreshRetryInterval =
+          fileConfig.refreshRetryInterval().orElse(Duration.ofSeconds(1));
 
       return new FileBearerTokenProvider(
           fileConfig.path(),
           refreshInterval,
           jwtExpirationRefresh,
           jwtExpirationBuffer,
-          Duration.ofSeconds(5), // TODO: make configurable
+          initialTokenWait,
+          refreshRetryInterval,
           asyncExec,
           clock::instant);
     } else {

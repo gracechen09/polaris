@@ -89,10 +89,14 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   private final BearerTokenProvider tokenProvider;
   private final CloseableHttpClient httpClient;
   private final ObjectMapper objectMapper;
+<<<<<<< HEAD
   private final String requestId;
+=======
+  private final String realm;
+>>>>>>> main
 
   /**
-   * Public constructor that accepts a complete policy URI.
+   * Public constructor that accepts a complete policy URI and the current realm identifier.
    *
    * @param policyUri The required URI for the OPA endpoint. For example, {@code
    *     https://opa.example.com/v1/polaris/allow}.
@@ -101,22 +105,34 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
    * @param objectMapper Jackson ObjectMapper for JSON serialization (required). Shared across
    *     authorizer instances to avoid initialization overhead.
    * @param tokenProvider Token provider for authentication (optional)
+<<<<<<< HEAD
    * @param requestId The server-generated request ID (optional), used to correlate OPA queries with
    *     the originating HTTP request. Resolved once by the caller since this authorizer is
    *     constructed fresh per request.
+=======
+   * @param realm The realm identifier (from RealmContext) for isolation in OPA policies.
+>>>>>>> main
    */
   public OpaPolarisAuthorizer(
       @NonNull URI policyUri,
       @NonNull CloseableHttpClient httpClient,
       @NonNull ObjectMapper objectMapper,
       @Nullable BearerTokenProvider tokenProvider,
+<<<<<<< HEAD
       @Nullable String requestId) {
+=======
+      @NonNull String realm) {
+>>>>>>> main
 
     this.policyUri = policyUri;
     this.tokenProvider = tokenProvider;
     this.httpClient = httpClient;
     this.objectMapper = objectMapper;
+<<<<<<< HEAD
     this.requestId = requestId;
+=======
+    this.realm = realm;
+>>>>>>> main
   }
 
   /**
@@ -345,9 +361,13 @@ class OpaPolarisAuthorizer implements PolarisAuthorizer {
   }
 
   private ImmutableContext buildContext() {
+<<<<<<< HEAD
     return ImmutableContext.builder()
         .requestId(requestId != null ? requestId : UUID.randomUUID().toString())
         .build();
+=======
+    return ImmutableContext.builder().requestId(UUID.randomUUID().toString()).realm(realm).build();
+>>>>>>> main
   }
 
   private ImmutableResource buildResource(
