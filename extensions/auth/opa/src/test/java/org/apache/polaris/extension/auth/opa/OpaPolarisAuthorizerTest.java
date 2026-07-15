@@ -1137,6 +1137,7 @@ public class OpaPolarisAuthorizerTest {
               HttpClients.createDefault(),
               JsonMapper.builder().build(),
               null,
+              null,
               "explicit-realm");
 
       PolarisPrincipal principal = PolarisPrincipal.of("eve", Map.of(), Set.of("auditor"));
@@ -1176,6 +1177,7 @@ public class OpaPolarisAuthorizerTest {
               HttpClients.createDefault(),
               JsonMapper.builder().build(),
               null,
+              null,
               "tenant-xyz");
 
       PolarisResolutionManifest resolutionManifest = mock(PolarisResolutionManifest.class);
@@ -1209,7 +1211,8 @@ public class OpaPolarisAuthorizerTest {
               HttpClients.createDefault(),
               JsonMapper.builder().build(),
               null,
-              "test-id");
+              "test-id",
+              "test-realm");
 
       PolarisPrincipal principal =
           PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));
@@ -1245,7 +1248,12 @@ public class OpaPolarisAuthorizerTest {
               "http://localhost:" + server.getAddress().getPort() + "/v1/data/polaris/allow");
       OpaPolarisAuthorizer authorizer =
           new OpaPolarisAuthorizer(
-              policyUri, HttpClients.createDefault(), JsonMapper.builder().build(), null, null);
+              policyUri,
+              HttpClients.createDefault(),
+              JsonMapper.builder().build(),
+              null,
+              null,
+              "test-realm");
 
       PolarisPrincipal principal =
           PolarisPrincipal.of("eve", Map.of("department", "finance"), Set.of("auditor"));

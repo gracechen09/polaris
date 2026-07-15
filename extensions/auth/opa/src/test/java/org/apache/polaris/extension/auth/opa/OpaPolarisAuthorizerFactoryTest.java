@@ -38,14 +38,14 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.polaris.core.entity.PolarisBaseEntity;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.config.RealmConfig;
 import org.apache.polaris.core.context.RealmContext;
+import org.apache.polaris.core.entity.PolarisBaseEntity;
 import org.apache.polaris.core.persistence.PolarisResolvedPathWrapper;
 import org.apache.polaris.extension.auth.opa.token.FileBearerTokenProvider;
 import org.apache.polaris.nosql.async.java.JavaPoolAsyncExec;
@@ -83,7 +83,8 @@ public class OpaPolarisAuthorizerFactoryTest {
     try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
       RealmContext realmContext = () -> "test-realm";
       OpaPolarisAuthorizerFactory factory =
-          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
+          new OpaPolarisAuthorizerFactory(
+              opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
 
       // Create authorizer
       RealmConfig realmConfig = mock(RealmConfig.class);
@@ -128,7 +129,8 @@ public class OpaPolarisAuthorizerFactoryTest {
     try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
       RealmContext realmContext = () -> "test-realm";
       OpaPolarisAuthorizerFactory factory =
-          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
+          new OpaPolarisAuthorizerFactory(
+              opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
 
       // Create authorizer
       RealmConfig realmConfig = mock(RealmConfig.class);
@@ -174,7 +176,8 @@ public class OpaPolarisAuthorizerFactoryTest {
     try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
       RealmContext realmContext = () -> "test-realm";
       OpaPolarisAuthorizerFactory factory =
-          new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
+          new OpaPolarisAuthorizerFactory(
+              opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
 
       // Create authorizer
       RealmConfig realmConfig = mock(RealmConfig.class);
@@ -211,7 +214,8 @@ public class OpaPolarisAuthorizerFactoryTest {
       try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
         RealmContext realmContext = () -> "factory-realm";
         OpaPolarisAuthorizerFactory factory =
-            new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, realmContext);
+            new OpaPolarisAuthorizerFactory(
+                opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
 
         factory.initialize();
         OpaPolarisAuthorizer authorizer =
@@ -266,7 +270,8 @@ public class OpaPolarisAuthorizerFactoryTest {
       try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
         RealmContext realmContext = () -> "realm-b";
         OpaPolarisAuthorizerFactory factory =
-            new OpaPolarisAuthorizerFactory(opaConfig, Clock.systemUTC(), asyncExec, realmContext);
+            new OpaPolarisAuthorizerFactory(
+                opaConfig, Clock.systemUTC(), asyncExec, () -> null, realmContext);
 
         factory.initialize();
         OpaPolarisAuthorizer authorizer =
@@ -318,9 +323,14 @@ public class OpaPolarisAuthorizerFactoryTest {
               .build();
 
       try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
+        RealmContext realmContext = () -> "test-realm";
         OpaPolarisAuthorizerFactory factory =
             new OpaPolarisAuthorizerFactory(
-                opaConfig, Clock.systemUTC(), asyncExec, () -> "factory-test-request-id");
+                opaConfig,
+                Clock.systemUTC(),
+                asyncExec,
+                () -> "factory-test-request-id",
+                realmContext);
         factory.initialize();
 
         RealmConfig realmConfig = mock(RealmConfig.class);
@@ -378,12 +388,14 @@ public class OpaPolarisAuthorizerFactoryTest {
       // RequestIdSupplier does via CurrentRequestManager.
       AtomicInteger requestCounter = new AtomicInteger();
       try (JavaPoolAsyncExec asyncExec = new JavaPoolAsyncExec()) {
+        RealmContext realmContext = () -> "test-realm";
         OpaPolarisAuthorizerFactory factory =
             new OpaPolarisAuthorizerFactory(
                 opaConfig,
                 Clock.systemUTC(),
                 asyncExec,
-                () -> "request-" + requestCounter.incrementAndGet());
+                () -> "request-" + requestCounter.incrementAndGet(),
+                realmContext);
 
         factory.initialize();
 
